@@ -2,6 +2,19 @@
 딥러닝 모델 논문 구현
 
 - ## Natural Language
+  - 한국어 데이터 전처리를 위한 konlpy 모듈 설치 필요
+  
+  - ### Installation
+    ```shell
+    # Install Java 1.8 or up
+    sudo apt-get install g++ openjdk-8-jdk python3-dev python3-pip curl
+
+    # Install konlpy
+    python3 -m pip install --upgrade pip
+    python3 -m pip install konlpy # Python 3.x
+
+    ```
+
   1. Word2Vec
   
 - ## Image
