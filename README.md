@@ -2,7 +2,6 @@
 딥러닝 모델 논문 구현
 
 - ## Natural Language
-  - [Natural Language Processing 정리](./NLP.md) 
 
   - 한국어 데이터 전처리를 위한 konlpy 모듈 설치 필요
   
