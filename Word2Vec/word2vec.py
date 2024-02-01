@@ -8,6 +8,7 @@ from konlpy.tag import Okt
 from tqdm import tqdm
 import re
 import time
+import platform
 
 import sys
 import os
@@ -28,19 +29,21 @@ def refine_text_data(text_data):
     stopword = stopword_df['stopword'].to_numpy()
 
     # 1. remain only kor
-    for i in tqdm(range(len(text_data)), desc='Remaining only korean'):
+    kor_text = []
+    for text in tqdm(text_data, desc='Remaining only korean'):
         try:
-            text_data[i] = re.sub('[^가-힣]', ' ', text_data[i])
+            kor = re.sub('[^가-힣]', ' ', text)
         except TypeError:
-            text_data[i] = ''
+            kor = ''
+        kor_text.append(kor)
 
     # 2. normalize and convert to morpheme
     refining_text_data = []
-    for i in tqdm(range(len(text_data)), desc='Normalizing and morpheme analyzing'):
-        if len(text_data[i]) > 0:        
-            text_data[i] = okt.normalize(text_data[i])
-            text_data[i] = okt.morphs(text_data[i])
-            refining_text_data.append(text_data[i])
+    for text in tqdm(kor_text, desc='Normalizing and morpheme analyzing'):
+        if len(text) > 0:        
+            morphs = okt.normalize(text)
+            morphs = okt.morphs(text)
+            refining_text_data.append(morphs)
 
     refined_text_data = []
     # 3. remove too short review and stopword
@@ -54,60 +57,84 @@ def refine_text_data(text_data):
     
     return refined_text_data
 
-def one_hot_encoding(tokens, word_to_index):
-    encoded_data = []
+
+def make_word_directory(text_data, word_to_index):
+    idx = len(word_to_index)
     
-    
-    for token in tokens:
-        one_hot_vector = [0] * len(word_to_index)
-        index = word_to_index[token]
-        one_hot_vector[index] = 1
-        encoded_data.append(one_hot_vector)
-
-    return encoded_data
-
-
-def preprocess_data(refined_text_data, N):
-
-    word_to_index = {'':0}
-    idx = 1
-    for tokens in tqdm(refined_text_data, desc='making word dictionary'):
+    for tokens in tqdm(text_data, desc='making word dictionary'):
         for token in tokens:
             if token not in word_to_index:
                 word_to_index[token] = idx
                 idx += 1
 
-    padding_data = []
+def one_hot_encoding(tokens, word_to_index):
+    encoded_data = []
+    
+    for token in tokens:
+        try:
+            one_hot_vector = [0] * len(word_to_index)
+            index = word_to_index[token]
+        except KeyError:
+            index = 0
+            pass
+        
+        one_hot_vector[index] = 1
+        encoded_data.append(one_hot_vector)
+
+    return encoded_data
+
+def preprocess_data(refined_text_data, word_to_index, N, log=''):
+
+    N_data = []
     target = []
-    for tokens in tqdm(refined_text_data, desc='padding and setting target'):
+    for tokens in tqdm(refined_text_data, desc='reshape N words and setting target'):
         if len(tokens) < N:
+            target.append([tokens[-1]])
             padding = tokens + ['']*(N-len(tokens))
-            padding_data.append(padding)
-            target.append([''])
+            N_data.append(padding)
         elif len(tokens) > N:
-            padding_data.append(tokens[:N])
+            N_data.append(tokens[:N])
             target.append([tokens[N]])
             for i in range(N,len(tokens)):
-                padding_data.append(tokens[i-N+1:i+1])
-                target.append([tokens[i+1]] if i+1 < len(tokens) else [''])
+                N_data.append(tokens[i-N+1:i+1])
+                target.append([tokens[i+1]] if i+1 < len(tokens) else [tokens[-1]])
         else:
-            padding_data.append(tokens)
-            target.append([''])
+            N_data.append(tokens)
+            target.append([tokens[-1]])
 
     preprocessed_data = []
-    for tokens in tqdm(padding_data, desc='one-hot encoding input data'):
+    for tokens in tqdm(N_data, desc=f'one-hot encoding {log} data'):
         encoded_data = one_hot_encoding(tokens, word_to_index)
         preprocessed_data.append(encoded_data)
 
-    encoded_target = []
-    for word in tqdm(target, desc='one-hot encoding target'):
-        encoded_data = one_hot_encoding(word, word_to_index)
-        encoded_target.append(encoded_data)
+    preprocessed_target = []
+    for tokens in tqdm(target, desc=f'one-hot encoding {log} target'):
+        encoded_target = one_hot_encoding(tokens, word_to_index)
+        preprocessed_target.append(encoded_target)
 
-    print(f'input data shape: {np.shape(preprocessed_data)}')
-    print(f'target data shape: {np.shape(encoded_target)}')
-    
-    return [np.array(preprocessed_data, dtype=float), np.array(encoded_target,dtype=float)]
+    print(f'{log} data shape: {np.shape(preprocessed_data)}')
+    print(f'{log} target data shape: {np.shape(preprocessed_target)}')
+
+    return [np.array(preprocessed_data, dtype=float), np.array(preprocessed_target, dtype=float)]
+
+def predict_data(sample, model, word_to_index, N=10):
+
+    _sample = refine_text_data(sample)
+    # for text in sample:
+    #     tokens = list(text.split())
+    #     _sample.append(tokens)
+
+    preporcessed_sample, _ = preprocess_data(_sample, word_to_index, N, log='sample')
+
+    print()
+    predictions = model.predict(preporcessed_sample)
+    print()
+
+    words = list(word_to_index)
+    for i in range(len(predictions)):
+        idx = np.argmax(predictions[i])
+        print(f'{sample[i]} -> {words[idx]}')
+
 
 class ProjectionLayer(tf.keras.layers.Layer):
     def __init__(self, D):
@@ -140,16 +167,22 @@ class NNLM(Model):
         x = self.output_layer(x)
         return self.softmax(x)
         
-
 if __name__ == '__main__':
 
     start_time = time.time()
     # Job 1: load review data and split into train/test 
     path = os.getcwd()
-    review = load_review_data(path+'/Word2Vec/nsmc.txt', col_name='document')
+
+    if platform.system() == 'Windows':
+        path += '\\Word2Vec\\nsmc.txt'
+    elif platform.system() == 'Linux':
+        path += '/Word2Vec/nsmc.txt'
+    
+    review = load_review_data(path, col_name='document')
+    max_len = len(max(review, key=lambda x: len(str(x).split())))
 
     train, test = train_test_split(review, test_size=0.25, shuffle=True)
-    time_log('\nload data and split into train/test')
+    time_log('load data and split into train/test')
 
     # Job 2: refining data
     train = refine_text_data(train[:100])    
@@ -159,23 +192,41 @@ if __name__ == '__main__':
 
     # Job 3: preprocessing data
     N = 10
-    train, train_target = preprocess_data(train, N)
+    word_to_index = {'':0}
+
+    make_word_directory(train, word_to_index)
+    make_word_directory(test, word_to_index)
+    print(f'Total Word: {len(word_to_index)}')
+    time_log('making word directory')
+
+    train, train_target = preprocess_data(train, word_to_index, N, log='train')
     time_log('preprocessing train data')
-    test, test_target = preprocess_data(test, N)
+    test, test_target = preprocess_data(test, word_to_index, N, log='test')
     time_log('preprocessing test data')
 
     # Job 4: NNLM Model design
     B, _, V = train.shape
     test_B, _, test_V = test.shape
     train_target = np.reshape(train_target, (B, V))
-    test_target = np.reshape(test_target, (test_B, test_V))
+    test_target = np.reshape(test_target, (test_B, V))
 
     nnlm = NNLM(N, V, 1000, 500)
     y = nnlm(train)
     nnlm.summary()
 
-    nnlm.compile(optimizer='adam', loss=tf.keras.losses.CategoricalCrossentropy(from_logits=True), metrics=['accuracy'])
-    history = nnlm.fit(train, train_target, epochs=10)
+    nnlm.compile(optimizer='adam', loss='categorical_crossentropy', metrics=['accuracy'])
+    tensorboard_callback = tf.keras.callbacks.TensorBoard(log_dir='logs')
+    history = nnlm.fit(train, train_target, epochs=10, callbacks=[tensorboard_callback])
+    time_log('Model training')
+
+    # Job 5: prediction
+    evaluation = nnlm.evaluate(test, test_target)
+    print(f'test loss: {evaluation[0]}')
+    print(f'test accuracy: {evaluation[1]}\n')
+
+    sample = ['호러 액션 스펙타클 재미와 감동의 쓰나미']
+    predict_data(sample, nnlm, word_to_index)
+    time_log('Prediction')
 
     time_log('total execute', start_time=start_time)
     
