@@ -161,12 +161,65 @@ class NNLM(Model):
     
     def call(self, inputs):
         x = self.input_layer(inputs)
+
         x = self.projection_layer(x)        
         x = self.flatten(x)
+
         x = self.hidden_layer(x)
+
         x = self.output_layer(x)
+
         return self.softmax(x)
         
+class HiddenLayer(tf.keras.layers.Layer):
+    def __init__(self, H):
+        super(HiddenLayer, self).__init__()
+        self.H = H
+        
+    def build(self, input_shape):
+        self.wx = self.add_weight(shape=(input_shape[-1], self.H), initializer='random_normal', trainable=True)
+        self.wh = self.add_weight(shape=(self.H, self.H), initializer='random_normal', trainable=True)
+        self.b = self.add_weight(shape=(1, self.H), initializer='zero', trainable=True)
+        self.ht_1 = self.add_weight(shape=(1, self.H), initializer='zero', trainable=False)
+    
+    def call(self, inputs):
+        
+        batch, time_step, _ = inputs.shape
+
+        # M input, 1 output
+        for t in range((time_step)):
+            word = inputs[:,t,:]
+            word = tf.reshape(word, [-1, 1, self.H])
+            ht_1 = tf.matmul(self.ht_1, self.wh)
+            x = tf.matmul(word, self.wx)
+            ht = ht_1 + x + self.b
+            ht = tf.keras.activations.tanh(ht)
+            self.ht_1 = ht
+        return ht
+
+class RNNLM(Model):
+    def __init__(self, N, V, H):
+        super(RNNLM, self).__init__()
+        self.input_layer = InputLayer(input_shape=(N,V))
+        self.embedding_layer = ProjectionLayer(H)
+        self.hidden_layer = HiddenLayer(H)
+        self.output_layer = Dense(V)
+        self.softmax = Softmax()
+
+    def call(self, inputs):
+
+        x = self.input_layer(inputs)
+        
+        # Embedding
+        x = self.embedding_layer(x)
+        
+        # RNN
+        x = self.hidden_layer(x)
+        
+        x = self.output_layer(x)
+
+        return self.softmax(x)
+
 if __name__ == '__main__':
 
     start_time = time.time()
@@ -205,28 +258,34 @@ if __name__ == '__main__':
     time_log('preprocessing test data')
 
     # Job 4: NNLM Model design
+    # B: total Batch size, V: Vocabulary size
     B, _, V = train.shape
     test_B, _, test_V = test.shape
-    train_target = np.reshape(train_target, (B, V))
-    test_target = np.reshape(test_target, (test_B, V))
+    train_target = np.reshape(train_target, (B, 1, V))
+    test_target = np.reshape(test_target, (test_B, 1, V))
 
-    nnlm = NNLM(N, V, 1000, 500)
-    y = nnlm(train)
-    nnlm.summary()
+    # nnlm = NNLM(N, V, 1000, 500)
+    # y = nnlm(train)
+    # nnlm.summary()
 
-    nnlm.compile(optimizer='adam', loss='categorical_crossentropy', metrics=['accuracy'])
+    rnnlm = RNNLM(N, V, 500)
+    y = rnnlm(train)
+    rnnlm.summary()
+
+    rnnlm.compile(optimizer='adagrad', loss='categorical_crossentropy', metrics=['accuracy'])
     tensorboard_callback = tf.keras.callbacks.TensorBoard(log_dir='logs')
-    history = nnlm.fit(train, train_target, epochs=10, callbacks=[tensorboard_callback])
+    history = rnnlm.fit(train, train_target, epochs=10, batch_size=32, callbacks=[tensorboard_callback])
     time_log('Model training')
 
     # Job 5: prediction
-    evaluation = nnlm.evaluate(test, test_target)
-    print(f'test loss: {evaluation[0]}')
-    print(f'test accuracy: {evaluation[1]}\n')
+    
+    # evaluation = rnnlm.evaluate(test, test_target)
+    # print(f'test loss: {evaluation[0]}')
+    # print(f'test accuracy: {evaluation[1]}\n')
 
-    sample = ['호러 액션 스펙타클 재미와 감동의 쓰나미']
-    predict_data(sample, nnlm, word_to_index)
-    time_log('Prediction')
+    # sample = ['호러 액션 스펙타클 재미와 감동의 쓰나미']
+    # predict_data(sample, rnnlm, word_to_index)
+    # time_log('Prediction')
 
     time_log('total execute', start_time=start_time)
     
