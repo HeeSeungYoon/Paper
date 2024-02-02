@@ -2,8 +2,6 @@ import pandas as pd
 import numpy as np
 from sklearn.model_selection import train_test_split
 import tensorflow as tf
-from tensorflow.keras import Model
-from tensorflow.keras.layers import Dense, Flatten, InputLayer, Softmax
 from konlpy.tag import Okt
 from tqdm import tqdm
 import re
@@ -14,6 +12,8 @@ import sys
 import os
 sys.path.append(os.path.dirname(os.path.abspath(os.path.dirname(__file__))))
 from utils import time_log
+from nnlm import NNLM
+from rnnlm import RNNLM
 
 def load_review_data(file_name, col_name):
     df = pd.read_csv(file_name, sep='\t', engine='python', encoding='utf-8')
@@ -56,7 +56,6 @@ def refine_text_data(text_data):
             refined_text_data.append(text)
     
     return refined_text_data
-
 
 def make_word_directory(text_data, word_to_index):
     idx = len(word_to_index)
@@ -135,91 +134,6 @@ def predict_data(sample, model, word_to_index, N=10):
         idx = np.argmax(predictions[i])
         print(f'{sample[i]} -> {words[idx]}')
 
-
-class ProjectionLayer(tf.keras.layers.Layer):
-    def __init__(self, D):
-        super(ProjectionLayer, self).__init__()
-        self.D = D
-    
-    def build(self, input_shape):
-        self.w = self.add_weight(shape=(input_shape[-1], self.D), initializer='random_normal', trainable=True)
-        self.b = self.add_weight(shape=(self.D, ), initializer='zero', trainable=True)
-    
-    def call(self, inputs):
-        # Embedding Vector
-        return tf.matmul(inputs, self.w) + self.b
-
-class NNLM(Model):
-    def __init__(self, N, V, D, H):
-        super(NNLM, self).__init__()
-        self.input_layer = InputLayer(input_shape=(N, V))
-        self.projection_layer = ProjectionLayer(D)
-        self.flatten = Flatten()
-        self.hidden_layer = Dense(H)
-        self.output_layer = Dense(V)
-        self.softmax = Softmax()
-    
-    def call(self, inputs):
-        x = self.input_layer(inputs)
-
-        x = self.projection_layer(x)        
-        x = self.flatten(x)
-
-        x = self.hidden_layer(x)
-
-        x = self.output_layer(x)
-
-        return self.softmax(x)
-        
-class HiddenLayer(tf.keras.layers.Layer):
-    def __init__(self, H):
-        super(HiddenLayer, self).__init__()
-        self.H = H
-        
-    def build(self, input_shape):
-        self.wx = self.add_weight(shape=(input_shape[-1], self.H), initializer='random_normal', trainable=True)
-        self.wh = self.add_weight(shape=(self.H, self.H), initializer='random_normal', trainable=True)
-        self.b = self.add_weight(shape=(1, self.H), initializer='zero', trainable=True)
-        self.ht_1 = self.add_weight(shape=(1, self.H), initializer='zero', trainable=False)
-    
-    def call(self, inputs):
-        
-        batch, time_step, _ = inputs.shape
-
-        # M input, 1 output
-        for t in range((time_step)):
-            word = inputs[:,t,:]
-            word = tf.reshape(word, [-1, 1, self.H])
-            ht_1 = tf.matmul(self.ht_1, self.wh)
-            x = tf.matmul(word, self.wx)
-            ht = ht_1 + x + self.b
-            ht = tf.keras.activations.tanh(ht)
-            self.ht_1 = ht
-        return ht
-
-class RNNLM(Model):
-    def __init__(self, N, V, H):
-        super(RNNLM, self).__init__()
-        self.input_layer = InputLayer(input_shape=(N,V))
-        self.embedding_layer = ProjectionLayer(H)
-        self.hidden_layer = HiddenLayer(H)
-        self.output_layer = Dense(V)
-        self.softmax = Softmax()
-
-    def call(self, inputs):
-
-        x = self.input_layer(inputs)
-        
-        # Embedding
-        x = self.embedding_layer(x)
-        
-        # RNN
-        x = self.hidden_layer(x)
-        
-        x = self.output_layer(x)
-
-        return self.softmax(x)
-
 if __name__ == '__main__':
 
     start_time = time.time()
@@ -272,10 +186,10 @@ if __name__ == '__main__':
     y = rnnlm(train)
     rnnlm.summary()
 
-    rnnlm.compile(optimizer='adagrad', loss='categorical_crossentropy', metrics=['accuracy'])
-    tensorboard_callback = tf.keras.callbacks.TensorBoard(log_dir='logs')
-    history = rnnlm.fit(train, train_target, epochs=10, batch_size=32, callbacks=[tensorboard_callback])
-    time_log('Model training')
+    # rnnlm.compile(optimizer='adagrad', loss='categorical_crossentropy', metrics=['accuracy'])
+    # tensorboard_callback = tf.keras.callbacks.TensorBoard(log_dir='logs')
+    # history = rnnlm.fit(train, train_target, epochs=10, batch_size=32, callbacks=[tensorboard_callback])
+    # time_log('Model training')
 
     # Job 5: prediction
     
