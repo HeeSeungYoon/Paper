@@ -35,7 +35,8 @@ class RNNLM(Model):
         super(RNNLM, self).__init__()
         self.input_layer = InputLayer(input_shape=(N,V))
         self.embedding_layer = ProjectionLayer(H)
-        self.hidden_layer = HiddenLayer(H)
+        # self.hidden_layer = HiddenLayer(H)
+        self.hidden_layer = tf.keras.layers.SimpleRNN(N, input_shape=(N, H))
         self.output_layer = Dense(V)
         self.softmax = Softmax()
 
@@ -45,7 +46,7 @@ class RNNLM(Model):
         
         # Embedding
         x = self.embedding_layer(x)
-        
+
         # RNN
         x = self.hidden_layer(x)
         

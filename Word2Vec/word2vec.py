@@ -175,8 +175,8 @@ if __name__ == '__main__':
     # B: total Batch size, V: Vocabulary size
     B, _, V = train.shape
     test_B, _, test_V = test.shape
-    train_target = np.reshape(train_target, (B, 1, V))
-    test_target = np.reshape(test_target, (test_B, 1, V))
+    train_target = np.reshape(train_target, (B, V))
+    test_target = np.reshape(test_target, (test_B, V))
 
     # nnlm = NNLM(N, V, 1000, 500)
     # y = nnlm(train)
@@ -186,20 +186,20 @@ if __name__ == '__main__':
     y = rnnlm(train)
     rnnlm.summary()
 
-    # rnnlm.compile(optimizer='adagrad', loss='categorical_crossentropy', metrics=['accuracy'])
-    # tensorboard_callback = tf.keras.callbacks.TensorBoard(log_dir='logs')
-    # history = rnnlm.fit(train, train_target, epochs=10, batch_size=32, callbacks=[tensorboard_callback])
-    # time_log('Model training')
+    rnnlm.compile(optimizer='adagrad', loss='categorical_crossentropy', metrics=['accuracy'])
+    tensorboard_callback = tf.keras.callbacks.TensorBoard(log_dir='logs')
+    history = rnnlm.fit(train, train_target, epochs=10, batch_size=32, callbacks=[tensorboard_callback])
+    time_log('Model training')
 
     # Job 5: prediction
     
-    # evaluation = rnnlm.evaluate(test, test_target)
-    # print(f'test loss: {evaluation[0]}')
-    # print(f'test accuracy: {evaluation[1]}\n')
+    evaluation = rnnlm.evaluate(test, test_target)
+    print(f'test loss: {evaluation[0]}')
+    print(f'test accuracy: {evaluation[1]}\n')
 
-    # sample = ['호러 액션 스펙타클 재미와 감동의 쓰나미']
-    # predict_data(sample, rnnlm, word_to_index)
-    # time_log('Prediction')
+    sample = ['호러 액션 스펙타클 재미와 감동의 쓰나미']
+    predict_data(sample, rnnlm, word_to_index)
+    time_log('Prediction')
 
     time_log('total execute', start_time=start_time)
     
