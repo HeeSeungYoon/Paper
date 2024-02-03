@@ -30,7 +30,8 @@
     pip install konlpy
     ```
 
-  1. Word2Vec
+  1. Word2Vec: [Implementation Code](./Word2Vec/) 
+
   
 - ## Image
 
